@@ -1,3 +1,11 @@
+# Program that detects motion by comparing the image with the previous one
+# If motion is detected:
+#   Date and time will be rendered into the image
+#   Image will be stored to directory 'images'
+#   Name of the image file is date and time
+# In debug mode, a window will be opened showing each image that was captured
+# This includes green bounding boxes around the areas where movement was detected
+# The program writes a log file that contains information about detection and other things
 # import the opencv library 
 import cv2
 import time
@@ -43,8 +51,10 @@ vid = cv2.VideoCapture(0)
 #1024 (H) x 768 (V) Pixeln MJPEG 30 fps YUY2 15 fps
 #800 (H) x 600 (V) Pixeln MJPEG 30 fps YUY2 30 fps
 #640 (H) x 480 (V) Pixel MJPEG 30 fps YUY2 30 fps
-vid.set(3, 1920)  # Set horizontal resolution max 3280 hd 1920
-vid.set(4, 1088)  # Set vertical resolution max 2464 hd 1080
+#vid.set(3, 1920)  # Set horizontal resolution max 3280 hd 1920
+#vid.set(4, 1088)  # Set vertical resolution max 2464 hd 1080
+vid.set(3, 1024)  # Set horizontal resolution max 3280 hd 1920
+vid.set(4, 768)  # Set vertical resolution max 2464 hd 1080
 
 starttime = time.time()
 writelog("Init done")
@@ -60,95 +70,97 @@ def wait():
     starttime = time.time()
 
 imagenumber = 1
-# Main loop for image processing
-while(True): 
-    # Capture the video frame 
-    # by frame 
-    ret, frame = vid.read()
-    image_width = numpy.shape(frame)[0]
-    image_height = numpy.shape(frame)[1]
-    if (debug_mode):
-        print("image " + str(imagenumber))
-    imagenumber = imagenumber + 1
 
-    # Make gray and blurred frame
-    gray_frame=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
-    gray_frame=cv2.GaussianBlur(gray_frame,(25,25),0)
-  
-    # Store it first time as baseline image
-    if baseline_image is None:
-        baseline_image = gray_frame
-        wait()
-        continue
+try:
+    # Main loop for image processing
+    while(True): 
+        # Capture the video frame 
+        # by frame 
+        ret, frame = vid.read()
+        if (ret):
+            image_width = numpy.shape(frame)[0]
+            image_height = numpy.shape(frame)[1]
+            if (debug_mode):
+                print("image " + str(imagenumber))
+            imagenumber = imagenumber + 1
 
-    # Find difference between new and base image
-    delta = cv2.absdiff(baseline_image,gray_frame)
-    # Apply a threshold in order not to take each minimum change
-    threshold = cv2.threshold(delta, 30, 255, cv2.THRESH_BINARY)[1]
-    # Detect objects inside the threshold area
-    (contours,_) = cv2.findContours(threshold,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # Decide which contours based on the size will be taken into account
-    motion_detected = False
-    for contour in contours:
-        threshold_area = threshold_motion*image_width*image_height
-        if cv2.contourArea(contour) < threshold_area: # This value decides how huge a changed area must be to be detected
-            continue
-        # Motion detected
-        motion_detected = True
-        if (debug_mode):
-            # Draw a rectangle around the identified contour
-            (x, y, w, h) = cv2.boundingRect(contour)
-            cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 1)
+            # Make gray and blurred frame
+            gray_frame=cv2.cvtColor(frame,cv2.COLOR_BGR2GRAY)
+            gray_frame=cv2.GaussianBlur(gray_frame,(25,25),0)
+          
+            # Store it first time as baseline image
+            if baseline_image is None:
+                baseline_image = gray_frame
+                wait()
+                continue
 
-    # Writes date and time into the image
-    if(print_date):
-        font                   = cv2.FONT_HERSHEY_SIMPLEX
-        bottomLeftCornerOfText = (int(image_width/72.5), int(image_width/27.2))
-        fontScale              = 0.328+image_width*image_height/1781760#std 0.5, HD 1.5
-        fontColor              = (255,255,255)
-        lineType               = int(1.483+image_width*image_height/593920)#std 2, HD 5
-        now = time.time() # get snapshot of current time
-        lt = time.localtime(now) # convert to local time struct
-        seconds = now - now // 1 # get remainder of the seconds
-        cv2.putText(frame, time.strftime("%Y-%m-%d %H:%M:%S", lt) + str(seconds)[1:5], 
-            bottomLeftCornerOfText, 
-            font, 
-            fontScale,
-            fontColor,
-            lineType)        
+            # Find difference between new and base image
+            delta = cv2.absdiff(baseline_image,gray_frame)
+            # Apply a threshold in order not to take each minimum change
+            threshold = cv2.threshold(delta, 30, 255, cv2.THRESH_BINARY)[1]
+            # Detect objects inside the threshold area
+            (contours,_) = cv2.findContours(threshold,cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Decide which contours based on the size will be taken into account
+            motion_detected = False
+            for contour in contours:
+                threshold_area = threshold_motion*image_width*image_height
+                if cv2.contourArea(contour) < threshold_area: # This value decides how huge a changed area must be to be detected
+                    continue
+                # Motion detected
+                motion_detected = True
+                if (debug_mode):
+                    # Draw a rectangle around the identified contour
+                    (x, y, w, h) = cv2.boundingRect(contour)
+                    cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 1)
 
-    # Debug image windows
-    #cv2.imshow("gray_frame Frame",gray_frame)
-    #cv2.imshow("Delta Frame",delta)
-    #cv2.imshow("Threshold Frame",threshold)
-    # Display the resulting frame 
-    if (debug_mode):
-        cv2.imshow('frame', frame) 
-      
-    # Save image if motion detected
-    if (motion_detected):
-        writelog("Motion detected")
-        # work out the timestamp part of the filename
-        now = time.time() # get snapshot of current time
-        lt = time.localtime(now) # convert to local time struct
-        seconds = now - now // 1 # get remainder of the seconds
-        #filename = "image-" + str(lt[0]) + "-" + str(lt[1]) + "-" + str(lt[2]) + "-" \
-        #                   + str(lt[3]) + "-" + str(lt[4]) + "-" + str(lt[5]) + ".jpg"
-        filename = "/home/pi/SecurityCam/images/image-" + time.strftime("%Y-%m-%d-%H-%M-%S", lt) + str(seconds)[1:5] + ".jpg"
-        cv2.imwrite(filename, frame)
+            # Writes date and time into the image
+            if(print_date):
+                font                   = cv2.FONT_HERSHEY_SIMPLEX
+                bottomLeftCornerOfText = (int(image_width/72.5), int(image_width/27.2))
+                fontScale              = 0.328+image_width*image_height/1781760#std 0.5, HD 1.5
+                fontColor              = (255,255,255)
+                lineType               = int(1.483+image_width*image_height/593920)#std 2, HD 5
+                now = time.time() # get snapshot of current time
+                lt = time.localtime(now) # convert to local time struct
+                seconds = now - now // 1 # get remainder of the seconds
+                cv2.putText(frame, time.strftime("%Y-%m-%d %H:%M:%S", lt) + str(seconds)[1:5], 
+                    bottomLeftCornerOfText, 
+                    font, 
+                    fontScale,
+                    fontColor,
+                    lineType)        
 
-    baseline_image = gray_frame
+            # Debug image windows
+            #cv2.imshow("gray_frame Frame",gray_frame)
+            #cv2.imshow("Delta Frame",delta)
+            #cv2.imshow("Threshold Frame",threshold)
+            # Display the resulting frame 
+            if (debug_mode):
+                cv2.imshow('frame', frame) 
+              
+            # Save image if motion detected
+            if (motion_detected):
+                writelog("Motion detected")
+                # work out the timestamp part of the filename
+                now = time.time() # get snapshot of current time
+                lt = time.localtime(now) # convert to local time struct
+                seconds = now - now // 1 # get remainder of the seconds
+                #filename = "image-" + str(lt[0]) + "-" + str(lt[1]) + "-" + str(lt[2]) + "-" \
+                #                   + str(lt[3]) + "-" + str(lt[4]) + "-" + str(lt[5]) + ".jpg"
+                filename = "/home/pi/SecurityCam/images/image-" + time.strftime("%Y-%m-%d-%H-%M-%S", lt) + str(seconds)[1:5] + ".jpg"
+                cv2.imwrite(filename, frame)
 
-    # Wait until timelapse time is completed
-    wait()
+            baseline_image = gray_frame
 
-    # the 'q' button is set as the 
-    # quitting button you may use any 
-    # desired button of your choice 
-    if cv2.waitKey(1) & 0xFF == ord('q'): 
-        break
-  
-# After the loop release the cap object 
-vid.release() 
-# Destroy all the windows 
-cv2.destroyAllWindows()
+            # Wait until timelapse time is completed
+            wait()
+        # the 'q' button is set as the 
+        # quitting button you may use any 
+        # desired button of your choice 
+        if cv2.waitKey(1) & 0xFF == ord('q'): 
+            break
+finally:  
+    # After the loop release the cap object 
+    vid.release() 
+    # Destroy all the windows 
+    cv2.destroyAllWindows()
